@@ -1,0 +1,117 @@
+---
+title: "Mushrooms Dataset Cleanup"
+author: "Ryan Gordon"
+date: "1/27/2019"
+output: html_document
+---
+
+## Understanding and importing the data
+
+The first two steps for this assignment were to read through the dataset description to understand the variables, and then to read this data into a data frame. I read this in to a data frame called 'mushroom' as shown below:
+
+```{r load-csv, eval=TRUE, message=FALSE, comment=NA, warning=FALSE}
+library(RCurl)
+raw <- getURL("https://archive.ics.uci.edu/ml/machine-learning-databases/mushroom/agaricus-lepiota.data")
+mushroom <- data.frame(read.csv(text=raw,header=FALSE,sep=",",stringsAsFactors=FALSE))
+```
+
+I noticed that the data frame that was created contained 8,124 rows, which is accurate since the description said there was 8,124 instances. However, the number of columns created was 23, when the data information stated that there were only 22 attributes. Therefore, I used the head() function to take a better look:
+
+```{r head, eval=TRUE, comment=NA}
+head(mushroom)
+```
+
+Based on the information given about the data set, and the information given by the head() function, it appears that the first column is poisonous or edible, and then the 22 attributes make up the remaining columns of the data frame.
+
+Now that I have a better understanding of the data and the data frame itself, I decided to plan how I was going to tidy up this data.
+
+## Tidying my Data Frame for Analysis
+
+Before I tidy up my data, I asked myself, "What do I want to get out of this data set?" I noticed that there are six categories that describe a particular part of the flower and its color. Maybe there is something interesting with the part of the flower and color combination and its status as poisonous. Therefore, I will select the first column which states whether the mushroom is poisonous or edible, and then select the other six columns that have to do with color. I used the subset() function to select these columns and set them to a new data frame called "mushroom.color":
+
+```{r select-color, eval=TRUE}
+mushroom.color <- subset(mushroom,select=c(V1,V4,V10,V15,V16,V18,V21))
+```
+
+Now that I have my new data frame, I need to change the column names and data values to names that are more readable. I used colnames() to rename the columns:
+
+```{r rename-columns, eval=TRUE}
+colnames(mushroom.color) <- c("Type","Cap","Gill","StalkAR","StalkBR","Veil","Spore")
+```
+
+Next, I used the gsub() function to replace all 'p' with 'Poisonous' and all 'e' with 'Edible':
+
+```{r rename-column-1, eval=TRUE}
+mushroom.color$Type <- gsub('p','Poisonous',mushroom.color$Type)
+mushroom.color$Type <- gsub('e','Edible',mushroom.color$Type)
+```
+
+Finally, I created a nested for loop that replaces each of the characters in the other columns with their respective colors:
+
+```{r loop-replace, eval=TRUE}
+for (i in 2:ncol(mushroom.color)) {
+  for (j in 1:nrow(mushroom.color)) {
+    if (mushroom.color[j,i]=='w') {mushroom.color[j,i] <- gsub('w','white',mushroom.color[j,i]);}
+    else if (mushroom.color[j,i]=='k') {mushroom.color[j,i] <- gsub('k','black',mushroom.color[j,i])}
+    else if (mushroom.color[j,i]=='n') {mushroom.color[j,i] <- gsub('n','brown',mushroom.color[j,i])}
+    else if (mushroom.color[j,i]=='b') {mushroom.color[j,i] <- gsub('b','buff',mushroom.color[j,i])}
+    else if (mushroom.color[j,i]=='h') {mushroom.color[j,i] <- gsub('h','chocolate',mushroom.color[j,i])}
+    else if (mushroom.color[j,i]=='c') {mushroom.color[j,i] <- gsub('c','cinnamon',mushroom.color[j,i])}
+    else if (mushroom.color[j,i]=='g') {mushroom.color[j,i] <- gsub('g','gray',mushroom.color[j,i])}
+    else if (mushroom.color[j,i]=='r') {mushroom.color[j,i] <- gsub('r','green',mushroom.color[j,i])}
+    else if (mushroom.color[j,i]=='o') {mushroom.color[j,i] <- gsub('o','orange',mushroom.color[j,i])}
+    else if (mushroom.color[j,i]=='p') {mushroom.color[j,i] <- gsub('p','pink',mushroom.color[j,i])}
+    else if (mushroom.color[j,i]=='u') {mushroom.color[j,i] <- gsub('u','purple',mushroom.color[j,i])}
+    else if (mushroom.color[j,i]=='e') {mushroom.color[j,i] <- gsub('e','red',mushroom.color[j,i])}
+    else if (mushroom.color[j,i]=='y') {mushroom.color[j,i] <- gsub('y','yellow',mushroom.color[j,i])}
+  }
+}
+```
+
+My new table is now formatted like this:
+
+```{r new-format, eval=TRUE, comment=NA}
+head(mushroom.color)
+```
+
+## Analysis of Poisonous Flowers as a Function of Color and Part of Flower
+
+Now that I have cleaned up the data, I decided to do a short analysis on the poisonous flowers. I thought it might be interesting to see the percentage of poisonous flowers as a function of color and part of the flower. For example, if I wanted to know the percentage of flowers with a white cap that are poisonous, I would need to find the number of instances of flowers that have a white cap and are poisonous and divide that by the total number of flowers with a white cap. Here is an example of the syntax:
+
+```{r example,eval=FALSE, comment=NA}
+nrow(subset(mushroom.color,Type=='Poisonous' & Cap=='white'))/nrow(subset(mushroom.color,Cap=='white'))
+```
+
+Next, I want to create an empty matrix (pp.matrix) with the columns being the part of the flower, and the rows representing a color. Each element will have a poisonous percentage of that type of flower. I created a nested for loop to calculate each element. Then I turned the matrix into a data frame (percent.poisonous) and named the rows and columns:
+
+```{r create-percent-poisonous,eval=TRUE, comment=NA}
+pp.matrix <- matrix(nrow=13,ncol=6)
+color <- c('white','black','brown','buff','chocolate','cinnamon','gray','green','orange','pink','purple','red','yellow')
+for (i in 1:ncol(pp.matrix)) {
+  for (j in 1:nrow(pp.matrix)) {
+    if (i==1) {pp.matrix[j,i] <- nrow(subset(mushroom.color,Type=='Poisonous' & Cap==color[j]))/nrow(subset(mushroom.color,Cap==color[j]))}
+    if (i==2) {pp.matrix[j,i] <- nrow(subset(mushroom.color,Type=='Poisonous' & Gill==color[j]))/nrow(subset(mushroom.color,Gill==color[j]))}
+    if (i==3) {pp.matrix[j,i] <- nrow(subset(mushroom.color,Type=='Poisonous' & StalkAR==color[j]))/nrow(subset(mushroom.color,StalkAR==color[j]))}
+    if (i==4) {pp.matrix[j,i] <- nrow(subset(mushroom.color,Type=='Poisonous' & StalkBR==color[j]))/nrow(subset(mushroom.color,StalkBR==color[j]))}
+    if (i==5) {pp.matrix[j,i] <- nrow(subset(mushroom.color,Type=='Poisonous' & Veil==color[j]))/nrow(subset(mushroom.color,Veil==color[j]))}
+    if (i==6) {pp.matrix[j,i] <- nrow(subset(mushroom.color,Type=='Poisonous' & Spore==color[j]))/nrow(subset(mushroom.color,Spore==color[j]))}
+  }
+}
+percent.poisonous <- as.data.frame(pp.matrix)
+colnames(percent.poisonous) <- c("Cap","Gill","StalkAR","StalkBR","Veil","Spore")
+rownames(percent.poisonous) <- c('white','black','brown','buff','chocolate','cinnamon','gray','green','orange','pink','purple','red','yellow')
+percent.poisonous
+```
+
+After analyzing the table, I realized that I can clean this up a bit. First, there are more digits displayed that I need, so I decided to display only two digits at most. I also see NaN values sprinkled in the table, which means that a particular part of the flower did not exist in that color. Therefore, I decided to replace the "NaN" values with "DNE" meaning "Does Not Exist." Next, I saw that 0% and 100% existed on the table. If the value is 0%, that means that the particular part and color combo was never poisonous. On the other hand, if 100% was displayed, that means that the particular part and color combo was always poisonous. Therefore, I replaced 0% values with "Edible," and "100%" values with "Poisonous."
+
+```{r clean-up, eval=TRUE, comment=NA}
+percent.poisonous[is.na(percent.poisonous)] <- 9.99
+percent.poisonous <- round(percent.poisonous*100, digits = 2)
+percent.poisonous[percent.poisonous == 999] <- 'DNE'
+percent.poisonous[percent.poisonous == 0] <- 'EDIBLE'
+percent.poisonous[percent.poisonous == 100] <- 'POISONOUS'
+percent.poisonous
+```
+
+This table can now aid in telling the poison status of flowers. For example, if I see a flower with green cap, then I know that it is edible. However, if I see a green color gill, then I know the flower must be poisonous. It also provides probabilities that a particular flower part and color combination is poisonous, and whether a particular part and color combination does not exist.
