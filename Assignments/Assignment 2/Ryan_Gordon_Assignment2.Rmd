@@ -1,0 +1,181 @@
+---
+title: "Assignment 2 - SQL and R"
+author: "Ryan Gordon"
+date: "02/10/2019"
+output:
+  html_document:
+    highlight: pygments
+    theme: cerulean
+    toc: true
+    toc_float:
+      collapsed: false
+---
+
+## Introduction
+
+For this assignment, I decided to poll some friends to rate various Tom Hanks' movies. The main focus of this assignment will be to design a database, create and fill tables from csv files to the database, connect to the database from R, and do some analysis on the data.
+
+## Database Design
+
+For this database, I decided to create three tables: movies, person and ratings. The tables and their respective columns can be seen below:
+
+![](/Users/ryan/Desktop/CUNY Data Science/DATA607/Assignments/Assignment 2/movie_database_pic.png)
+
+The movies table gives the movie id, movie name and year the movie was made. The person table provides a person id and name for each person involved in the poll. The ratings table has four columns which contain a rating id, movie id, person id, and rating for the movie.
+
+The "PK" symbol stands for "Primary Key," while "FK" stands for "Foreign Key." From the table, we can see that the ratings table has two foreign keys, with each foreign key being a primary key of the other tables. With this set up, we can link these tables and create a new table that contains information from all tables.
+
+In this example, this set up may seem a little over the top, since we can simply replace the 'movie_id' and 'person_id' with movie name and person name and just create one table titled ratings. However, the movies and person table could be more involved. For example, the movies table could contain many more columns such as genre, supporting actors, movie length, etc. However, this information may not be important to the ratings of the movies. Therefore, it is much more clean to create multiple tables that give the necessary information to describe that specific table.
+
+## SQL Code to Create/Fill Tables from CSV Files
+
+Below is the SQL code that will create and fill the tables. The "DROP TABLE IF EXISTS" command will delete all tables from the database if they exist. This is good to have first, so that it clears out any of the tables that we are going to create.
+
+Next, the "CREATE TABLE" line will create each table with the specified columns. In each of these statements we define a primary key of the table. In the ratings table we also define foreign keys, which reference the primary key of the other tables. This will allow us to join these tables together.
+
+Finally, we have the "LOAD DATA INFILE" lines that load each csv into their respective tables.
+
+```{sql, eval=FALSE}
+DROP TABLE IF EXISTS ratings;
+DROP TABLE IF EXISTS movies;
+DROP TABLE IF EXISTS person;
+
+CREATE TABLE movies (
+	movie_id integer NOT NULL,
+    movie_name VARCHAR(255) UNIQUE NOT NULL,
+    movie_year integer NOT NULL,
+    PRIMARY KEY (movie_id)
+);
+
+CREATE TABLE person (
+	person_id integer NOT NULL,
+    person_name VARCHAR(255) UNIQUE NOT NULL,
+    PRIMARY KEY (person_id)
+);
+
+CREATE TABLE ratings (
+	rating_id integer NOT NULL,
+	movie_id integer NOT NULL,
+    person_id integer NOT NULL,
+    rating integer NOT NULL,
+    PRIMARY KEY (rating_id),
+    FOREIGN KEY (movie_id) REFERENCES movies (movie_id),
+    FOREIGN KEY (person_id) REFERENCES person (person_id)
+);
+
+LOAD DATA INFILE '/tmp/movies.csv'
+INTO TABLE movies
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"'
+LINES TERMINATED BY '\r\n'
+IGNORE 1 ROWS;
+
+LOAD DATA INFILE '/tmp/person.csv'
+INTO TABLE person
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"'
+LINES TERMINATED BY '\r\n'
+IGNORE 1 ROWS;
+
+LOAD DATA INFILE '/tmp/ratings.csv'
+INTO TABLE ratings
+FIELDS TERMINATED BY ','
+ENCLOSED BY '"'
+LINES TERMINATED BY '\r\n'
+IGNORE 1 ROWS;
+```
+
+## Connect to Movie Database and Create Data Frame
+
+First, we need to load the libaries that are necessary for connection to my SQL (RMySQL), and allows us to query data from SQL (dplyr).
+
+```{r load-libraries, eval=TRUE, comment=NA, message=FALSE}
+library(RMySQL)
+library(dplyr)
+```
+
+Next, we need to make a connection to the MySQL server. For this, we use the dbConnect() function and store it in a variable called 'con':
+
+```{r password, eval=TRUE, echo=FALSE}
+pwd <- 'WestSoccer4$'
+```
+
+```{r connection, eval=TRUE, comment=NA, message=FALSE}
+con <- dbConnect(MySQL(), user='root', password=pwd, dbname='movie', host='localhost')
+```
+
+In the previous section, we saw how the tables were set up in the database. It would be useful for us to create a new table where each row lists a person, movie and their rating for this movie. This will require us to join all three tables and select these columns. This is done with the following R command that calls a SQL query:
+
+```{r join-query, eval=TRUE, comment=NA}
+sql.table <- tbl(con, sql("SELECT p.person_name, m.movie_name, r.rating
+                           FROM ratings r
+                           JOIN person p ON r.person_id = p.person_id
+                           JOIN movies m ON r.movie_id = m.movie_id"))
+```
+
+Finally, we need to convert this table to a data frame and check the information provided.
+
+```{r convert-df, eval=TRUE, comment=NA}
+movie.reviews <- as.data.frame(sql.table)
+```
+
+The structure of the data frame appears to be accurate, as it lists the reviewer name, movie name, and their rating.
+
+```{r head, eval=TRUE, comment=NA}
+head(movie.reviews)
+```
+
+The dimensions show there are 30 rows and 3 columns. 30 rows is accurate since there six movies and five reviewers (6 x 5 = 30).
+
+```{r dimension, eval=TRUE, comment=NA}
+dim(movie.reviews)
+```
+
+It is also good practice to disconnect from the database when you are done using it. This command can be seen below:
+
+```{r disconnect, eval=TRUE, comment=NA, warning=FALSE, message=FALSE}
+dbDisconnect(con)
+```
+
+## Data Analysis
+
+The previous sections involved designing the database and placing this information into R through SQL. Now that we have the data we need in a data frame, it is time to conduct statistical analysis on it. In the following subsections, I will compare the average rating between movies, and the average rating given by each person.
+
+### Average Rating For Each Movie
+
+This section focuses on comparing the average rating for each movie. In order to do this, we can use a simple function called aggregate(), which splits the data into subsets and then computes summary statistics for each. In this case, we can look at the mean.
+
+```{r aggregate-by-movie, eval=TRUE, comment=NA}
+mean.movie <- aggregate(rating ~ movie_name, movie.reviews, mean)
+mean.movie
+```
+
+From the data provided in the 'mean.movie' data frame we can see that the highest rated movie was Forrest Gump, while the lowest rated movie was Cast Away.
+
+To better visualize this data, we can create a bar plot that will provide us with the same conclusions, but in a more visual way.
+
+```{r aggregate-by-movie-graph, eval=TRUE, comment=NA}
+library(ggplot2)
+gginit.movie <- ggplot(mean.movie,aes(x=movie_name,y=rating))
+plottype.movie <- geom_bar(stat="Identity",color='red',fill='pink',alpha=0.5)
+plottheme.movie <- theme_bw()
+gginit.movie + plottype.movie + plottheme.movie + xlab('Movie Name') + ylab('Average Rating') + ylim(0,5)
+```
+
+### Average Rating Given By Each Person
+
+In this section, we will focus on the ratings of the reviewers. We will use nearly identical code that was used in the last section. The creation of the data frame and the plot is shown below:
+
+```{r aggregate-by-person, eval=TRUE, comment=NA}
+mean.person <- aggregate(rating ~ person_name, movie.reviews, mean)
+mean.person
+
+gginit.person <- ggplot(mean.person,aes(x=person_name,y=rating))
+plottype.person <- geom_bar(stat="Identity",color='red',fill='pink',alpha=0.5)
+plottheme.person <- theme_bw()
+gginit.person + plottype.person + plottheme.person + xlab('Person Name') + ylab('Average Rating') + ylim(0,5)
+```
+
+We can see that the average rating by person ranges from 3 to 4. This range isn't as large as when we grouped by movie, but there is a noticeable difference between the average rating by person.
+
+The conclusions from the average rating by person are unclear from the data at hand. At first glance, it is tempting to say that Brett does not like Tom Hanks' movies as much as Ross. However, we do not have Brett or Ross' ratings on any other types of movies (i.e. Denzel Washington movies). Therefore, it may just be that Brett is a harder reviewer than Ross.
