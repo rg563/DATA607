@@ -1,0 +1,174 @@
+---
+title: "Assignment 3 - Chapter 8 Problems (3, 4 and 9)"
+author: "Ryan Gordon"
+date: "02/10/2019"
+output:
+  html_document:
+    highlight: pygments
+    theme: cerulean
+    toc: true
+    toc_float:
+      collapsed: false
+---
+
+For these problems, we need to load the stringr package.
+
+```{r load-package, eval=TRUE, comment=NA}
+library(stringr)
+```
+
+### Problem 3
+
+#### Part A - Rearrange Names to Follow "First_Name Last_Name" Convention
+
+First, we need to load in the raw data provided by the assignment:
+
+```{r load-raw, eval=TRUE, comment=NA}
+raw.data <-"555-1239Moe Szyslak(636) 555-0113Burns, C. Montgomery555-6542Rev. Timothy Lovejoy555 8904Ned Flanders636-555-3226Simpson, Homer5553642Dr. Julius Hibbert"
+```
+
+Next, is to create an R code that will do the following:
+
+* Place the names into a vector called 'raw.names'.
+* Create a for loop that goes through each name in the 'raw.names' vector and performs the following tasks:
+    * Splits the name into two separate strings if there is a comma present.
+    * If a split occurs there will be a vector of two strings, and if it does not then there will be a vector of only one string. Therefore, if there are two strings in the vector, then the strings will be reversed and combined to one.
+
+The R-code and output can be seen below:
+
+```{r flip-names, eval=TRUE, comment=NA}
+raw.names <- unlist(str_extract_all(raw.data, "[[:alpha:]., ]{2,}"))
+final.names <- vector()
+for (i in 1:length(raw.names)) {
+  name_vec <- str_trim(unlist(str_split(raw.names[i],",")))
+  if (length(name_vec) > 1) {
+    final.names[i] <- str_c(name_vec[2],name_vec[1],sep=" ")
+  }
+  else {
+    final.names[i] <- name_vec
+  }
+}
+final.names
+```
+
+#### Part B - Logical Vector Indicating Whether a Character has a Title (i.e., Rev. and Dr.)
+
+The logical vector should display 'TRUE' for the third and sixth element since these are the only two people with titles. The simple way is to utilize the OR ("|") function to return 'TRUE' for all names that have "DR." or "Rev.":
+
+```{r simple-way, eval=TRUE, comment=NA}
+title.bool <- str_detect(final.names, "Dr.|Rev.")
+title.bool
+```
+
+Another way would be to specify that there is alpha characters ("[[:alpha:]]") followed by a period ("[.]"). We need to utilize the quantifier function ("{2,}") because "C." would return true if we do not specify at least two characters before the period.
+
+```{r more-robust, eval=TRUE, comment=NA}
+title.bool <- str_detect(final.names, "[[:alpha:]]{2,}[.]") 
+title.bool
+```
+
+#### Part C - Logical Vector Indicating Whether a Character has a Second Name
+
+From looking at the vector, it appears the only person with two names is "C. Montgomery Burns". Therefore, we need to use a similar function as before, but change the quantifier to 1 to only specify this entry. In addition we need to specify strictly upper case letters to not return Dr. or Rev.
+
+```{r second-name, eval=TRUE, comment=NA}
+second.bool <- str_detect(final.names, "[[:upper:]]{1}[.]")
+second.bool
+```
+
+### Problem 4
+
+#### Part A - [0-9]+\\\\$
+
+The "[0-9]" denotes any integer, the "+" denotes that the preceding ("[0-9]") can be repeated many times, and the "\\\\$" means the string must end in a "\$".
+
+The following tests two strings and compares them to the regular expression:
+
+```{r 4a, eval=TRUE,comment=NA}
+test.ex <- "[0-9]+\\$"
+string.vec <- c("913$","$913","hmm","9a13$1")
+bool <- str_detect(string.vec,test.ex)
+bool
+```
+
+The only non-obvious 'TRUE' result was "9a13\$1". This returned 'TRUE' because the portion "13\$" follows the pattern, even though the entire string does not follow this pattern:
+
+```{R 4a-ext, eval=TRUE, comment=NA}
+str_extract("9a13$1",test.ex)
+```
+
+#### Part B - \\\\b[a-z]{1,4}\\\\b
+
+This regular expression will extract four lower case letters from an expression. The "\\\\b" indicates that this must have a word edge, and the string cannot be longer than four characters.
+
+```{r 4b, eval=TRUE,comment=NA}
+test.ex <- "\\b[a-z]{1,4}\\b"
+string.vec <- c("913$","$913","ryan","Ryan","gordon")
+bool <- str_detect(string.vec,test.ex)
+bool
+```
+
+#### Part C - .*?\\\\.txt$
+
+The ".*?" portion is pretty much saying that it will return anything, and the "\\\\.txt$" says that the string must end in ".txt". Therefore, it will return 'TRUE' for anything following the format "[ANY COMBINATION].txt":
+
+```{r 4c, eval=TRUE,comment=NA}
+test.ex <- ".*?\\.txt$"
+string.vec <- c("file.txt","file.txtt","file.html",".file.txt")
+bool <- str_detect(string.vec,test.ex)
+bool
+```
+
+#### Part D - \\\\d{2}/\\\\d{2}/\\\\d{4}
+
+This regular expression is looking for two digits followed by a forward slash, and then two digits followed by a forward slash, and then four digits. This appears to be used to describe a date:
+
+```{r 4d, eval=TRUE,comment=NA}
+test.ex <- "\\d{2}/\\d{2}/\\d{4}"
+string.vec <- c("09/13/1990","09/13/90","September 13, 1990","9/13/90")
+bool <- str_detect(string.vec,test.ex)
+bool
+```
+
+#### Part E - <(.+?)>.+?</\\\\1>
+
+The "<(.+?)>" portion symbolizes that a string of length one or greater can be placed between the "<" and ">". The "</\\\\1>" means that it must match the beginning portion preceeded by a forward slash. The middle portion (".+?") means that anything can be placed in here.
+
+```{r 4e, eval=TRUE,comment=NA}
+test.ex <- "<(.+?)>.+?</\\1>"
+string.vec <- c("< >hi</ >","< >hi< >","<123r>ryan</123r>","<123r>ryan</123>")
+bool <- str_detect(string.vec,test.ex)
+bool
+```
+
+### Problem 9
+
+Below is the secret message placed into a variable:
+
+```{r secret-message, eval=TRUE, comment=NA}
+secret.message <- "clcopCow1zmstc0d87wnkig7OvdicpNuggvhryn92Gjuwczi8hqrfpRxs5Aj5dwpn0TanwoUwisdij7Lj8kpf03AT5Idr3coc0bt7yczjatOaootj55t3Nj3ne6c4Sfek.r1w1YwwojigOd6vrfUrbz2.2bkAnbhzgv4R9i05zEcrop.wAgnb.SqoU65fPa1otfb7wEm24k6t3sR9zqe5fy89n6Nd5t9kc4fE905gmc4Rgxo5nhDk!gr"
+```
+
+The first thing I noticed was that there were a lot fewer upper case letters than lower case letters. I decided to extract only the upper case letters using the "str_extract_all()" function:
+
+```{r extract-all, eval=TRUE, comment=NA}
+str_extract_all(secret.message,"[[:upper:]]")
+```
+
+When looking at the capital letters, it appears to spell "CONGRATULATIONS YOU ARE A SUPER NERD". However, I don't know how the spaces are created. I looked through the original message and it appears that all of the periods represent a space. I tested this theory out below:
+
+```{r extract-all-period, eval=TRUE, comment=NA}
+str_extract_all(secret.message,"[[:upper:].]")
+```
+
+The next step would be to replace all of the periods with spaces using the "str_replace_all()" function:
+
+```{r extract-all-period-replace, eval=TRUE, comment=NA}
+str_replace_all(unlist(str_extract_all(secret.message,"[[:upper:].]")),pattern="[.]",replacement=" ")
+```
+
+It is important to note that the "unlist()" function is necessary to create a vector that the "str_replace_all()" function can act on. Finally, we can use the "paste()" function to get the final answer:
+
+```{r extract-all-period-replace-paste, eval=TRUE, comment=NA}
+paste(str_replace_all(unlist(str_extract_all(secret.message,"[[:upper:].]")),pattern="[.]",replacement=" "),collapse="")
+```
