@@ -1,0 +1,153 @@
+---
+title: "Project 1"
+author: "Ryan Gordon"
+date: "02/24/2019"
+output:
+  html_document:
+    highlight: pygments
+    theme: cerulean
+    toc: true
+    toc_float:
+      collapsed: false
+---
+
+## Load All Necessary Libraries
+
+First, we need to load all the libraries used in this project. The following packages and the reason for them is shown below:
+
+* tidyr - This project utilizes the "separate" function to split columns based on a delimiter.
+* stringr - Various functions from this package are used to manipulate strings.
+* DT - This was used to display the final table into a user-friendly table.
+
+```{r load-libraries, eval=TRUE, comment=NA, message=FALSE}
+library(tidyr)
+library(stringr)
+library(DT)
+```
+
+## Load in Data from URL and Clean Up
+
+The following R code will collect the data from a URL and place it in a data frame:
+
+```{r load-csv, eval=TRUE, message=FALSE, comment=NA, warning=FALSE}
+raw.url <- "https://raw.githubusercontent.com/rg563/DATA607/master/Projects/Project%201/tournamentinfo.txt"
+raw.table <- read.delim(raw.url,header=FALSE,stringsAsFactors=FALSE)
+raw.data <- as.data.frame(raw.table)
+head(raw.data)
+```
+
+When looking at the structure of this data, there are two things that immediately stand out. The first is how each section is separated by a chain of "-". We will need to remove these rows. The second is that it appears that there are consecutive rows of data that are stacked on top of each other. We will need to combine these consecutive rows into one row, so that we have all the information on one line.
+
+First, let's delete all the rows with "-" using the "grepl" function. This function returns a logical vector. In my code, I use "!grepl", which will return the opposite of "grepl". Therefore, my function will return 'FALSE' if the line contains "---" and return 'TRUE' if it does not contain it. Then, my data frame will only contain rows that do not contain "---":
+
+```{r remove-lines, eval=TRUE, comment=NA}
+raw.data <- as.data.frame(raw.data[!grepl("---",raw.data$V1),])
+head(raw.data)
+```
+
+Next, we need to combine consecutive rows into one. First, we can create two data frames from the original data frame with one containing all even rows, and the other containing all odd rows. For this, I used the "seq" function, which will return a specified sequence of rows from my data frame. Then, we can use the "paste" function to combine the data frames into one data frame:
+
+```{r two-new-df, eval=TRUE, comment=NA}
+odd.df <- raw.data[seq(1,nrow(raw.data),2),]
+even.df <- raw.data[seq(2,nrow(raw.data),2),]
+raw.data.combined <- data.frame(paste(odd.df,even.df))
+head(raw.data.combined)
+```
+
+Now, we can split the rows using "|" as the deliminator, select the first row as the column names, and then delete the first row:
+
+```{r final-raw-transform, eval=TRUE, comment=NA,warning=FALSE}
+col.vector <- as.character(1:20)
+raw.data.sep <- separate(data=raw.data.combined,col=paste.odd.df..even.df.,into=col.vector,sep="\\|")
+colnames(raw.data.sep) = raw.data.sep[1,]
+raw.data.sep <- raw.data.sep[-1,]
+head(raw.data.sep)
+```
+
+Next, we need to split up the 'USCF ID / Rtg (Pre->Post)' column because this contains three pieces of useful information all in one column. All of the important information are the digits containing ID, Pre-Rating, and Post-Rating. Originally, I used the "str_extract_all" function with the regular expression "\\\\d{1,}" to list all sequences of digits in the string. However, this returned abnormal results from some rows because the ratings contained the letter 'P' in the middle of the number. I noticed that the sequence of numbers after each 'P' were at most two digits, and the ID, Pre- and Post-Ratings were all at least 3 digits. Therefore, I ammended the regular expression to "\\\\d{3,}" to account for this. Then, I added an additional for loop to only extract the digits from these columns, and used the "cbind" function to add these new columns to the existing data frame:
+
+```{r sep-column, eval=TRUE, comment=NA}
+split.column <- data.frame(as.character(str_extract_all(raw.data.sep$` USCF ID / Rtg (Pre->Post)       `,"\\d{3,}")))
+split.column <- separate(data=split.column,col="as.character.str_extract_all.raw.data.sep...USCF.ID...Rtg..Pre..Post...........",into=c("ID","Pre","Post"),sep=",")
+for (i in 1:nrow(split.column)) {
+  for (j in 1:ncol(split.column)) {
+    split.column[i,j] <- str_extract(split.column[i,j],"\\d{1,}")
+  }
+}
+raw.data.add.col <- cbind(raw.data.sep,split.column)
+head(raw.data.add.col)
+```
+
+Next, we need to clean up the "Round" columns since they contain the result and the pair number of the person they played, and we only care about the opponents they played. We can use "str_extract" again to accomplish this.
+
+```{r more-clean, eval=TRUE, comment=NA}
+for (i in 1:nrow(raw.data.add.col)) {
+  for (j in 4:10) {
+    raw.data.add.col[i,j] <- str_extract(raw.data.add.col[i,j],"\\d{1,}")
+  }
+}
+head(raw.data.add.col)
+```
+
+Finally, we can place only the necessary information needed for the final table in the data frame.
+
+```{r final-edit, eval=TRUE, comment=NA}
+column.names <- c('Pair','Player Name','Total Points','Opponent 1','Opponent 2','Opponent 3','Opponent 4','Opponent 5','Opponent 6','Opponent 7','State','Pre')
+raw.data.final <- raw.data.add.col[,c(1,2,3,4,5,6,7,8,9,10,11,22)]
+colnames(raw.data.final) <- column.names
+head(raw.data.final)
+```
+
+## Calculating Average Opponent Pre-Rating for Each Player
+
+In order to conduct numerical calculations, I needed to convert all rows that contained numeric values to numeric columns.
+
+```{r convert-type, eval=TRUE, comment=NA}
+for (j in 3:10) {
+  raw.data.final[,j] <- as.numeric(raw.data.final[,j])
+}
+raw.data.final$Pre <- as.numeric(raw.data.final$Pre)
+```
+
+Next, I am going to replace all of the "Opponent"" columns with that particular player's Pre-Rating:
+
+```{r replace-column, eval=TRUE, comment=NA}
+for (i in 1:nrow(raw.data.final)) {
+  for (j in 4:10) {
+    if (!is.na(raw.data.final[i,j])) {
+      raw.data.final[i,j] <- raw.data.final[raw.data.final[i,j],12]
+    }
+  }
+}
+head(raw.data.final)
+```
+
+Finally, we can calculate the average of these columns using the rowMeans() function. It is important to specify the "na.rm" component to be 'TRUE' to avoid the NA values being used in the calculation.
+
+```{r average-calc, eval=TRUE, comment=NA}
+raw.data.final$average <- format(round(rowMeans(raw.data.final[,4:10],na.rm=TRUE),digits=2),nsmall=2)
+```
+
+## Creating Final Table and Writing to CSV File
+
+Now that we have all of the components for the data table, we can create our data frame from this, and display it in a table.
+
+```{r final-table, eval=TRUE, comment=NA}
+final.column.names <- c('Player Name','Player State','Total Points','Player Pre-Rating','Avg. Opponent Pre-Rating')
+final.table <- raw.data.final[,c(2,11,3,12,13)]
+colnames(final.table) <- final.column.names
+rownames(final.table) <- NULL
+datatable(final.table, rownames=FALSE)
+```
+
+Finally, we can save this data table to a CSV file. However, we need to make sure all the columns that are numeric are saved as numeric, and to trim all white-space from the string columns.
+
+```{r write-csv, eval=TRUE, comment=NA}
+for (j in 3:5) {
+  final.table[,j] <- as.numeric(final.table[,j])
+}
+for (j in 1:2) {
+  final.table[,j] <- str_trim(final.table[,j])
+}
+write.table(final.table,file="Ryan_Gordon_Project1.csv",row.names=FALSE,col.names=TRUE,sep=",")
+```
