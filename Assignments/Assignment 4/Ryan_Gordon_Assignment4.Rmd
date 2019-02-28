@@ -1,0 +1,109 @@
+---
+title: "Assignment 4 - Tidying and Transforming Data"
+author: "Ryan Gordon"
+date: "02/24/2019"
+output:
+  html_document:
+    highlight: pygments
+    theme: cerulean
+    toc: true
+    toc_float:
+      collapsed: false
+---
+
+### Loading Libraries
+
+The necessary libraries for data clean up are the dplyr and tidyr packages, and the package used for visiualization is ggplot2 and cowplot (arrange graphs). In addition, I added the DT library to display datatables.
+
+```{r load-library, eval=TRUE, message=FALSE, warning=FALSE}
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(cowplot)
+library(DT)
+```
+
+### Reading in the Data and Inspection
+
+The table was read in using the "tabl_df" and "read.csv" functions. The table is shown below:
+
+```{r read-raw, eval=TRUE, comment=NA}
+raw.df <- tbl_df(read.csv("week5.csv",header=TRUE,sep=","))
+raw.df
+```
+
+The first thing that pops out is that row 3 is blank, so we can go ahead and remove that row.
+
+```{r remove-row, eval=TRUE, comment=NA}
+raw.df <- raw.df[-c(3),]
+```
+
+In addition, the column headers are not accurate. Particularly the airline, status, and the period in between places with two words. Finally, I added the name of the airline to the rows which were delayed.
+
+```{r column-names, eval=TRUE, comment=NA}
+colnames(raw.df) <- c('Airline','Status','Los Angeles','Phoenix','San Diego','San Francisco','Seattle')
+raw.df[2,1] <- raw.df[1,1]
+raw.df[4,1] <- raw.df[3,1]
+raw.df
+```
+
+Now that we have completed the initial clean-up, we can decide on how we want to display this data to get the most out of it.
+
+### Arranging the Data
+
+First, I used the gather function to list all of the locations in a column as shown below:
+
+```{r gather, eval=TRUE, comment=NA, warning=FALSE}
+flight.status.gather <- raw.df %>% gather(Destination,Count,3:7)
+flight.status.gather
+```
+
+Next, I used the spread function to have "delayed" and "on time" be displayed as columns:
+
+```{r spread, eval=TRUE, comment=NA}
+flight.status.spread <- flight.status.gather %>% spread(Status, Count)
+flight.status.spread
+```
+
+Next, I would like to create a new column to show the total flights for each airline and destination combination, followed by the percentage of flights that are delayed. This information will allow us to see which destinations are most popular, and/or if certain airlines are preferred for certain destinations, as well as they delay percentage. In order to accomplis this, I used the mutate function:
+
+```{r mutate, eval=TRUE, comment=NA}
+flight.status.mutate1 <- flight.status.spread %>% mutate(Total_Flights = flight.status.spread$delayed + flight.status.spread$'on time')
+flight.status.final <- flight.status.mutate1 %>% mutate(Percent_Delayed = flight.status.mutate1$delayed/flight.status.mutate1$Total_Flights*100)
+flight.status.final
+```
+
+Finally, I created two additional tables comparing the airlines as a whole and comparing the destination delays. I used the group_by function to group by city and airliine, as well as using the summarise function to get the mean.
+
+```{r groupby, eval=TRUE, comment=NA, warning=FALSE}
+flight.status.location <- flight.status.final %>% group_by(Destination) %>% summarise(Average_Percent_Delayed = mean(Percent_Delayed))
+flight.status.location
+flight.status.airline <- flight.status.final %>% group_by(Airline) %>% summarise(Average_Percent_Delayed = mean(Percent_Delayed))
+flight.status.airline
+```
+
+With these final three tables, we can move on to exploring the data.
+
+### Data Analysis
+
+First, I wanted to plot the number of flights to each destination as a function of airline. The first point that stands out to me are the total number of flights to Phoenix, and how AM WEST virtually dominates this destination. The opposite is true for Seattle where ALASKA dominates this hub.
+
+The more interesting figure is the percentage of flights that were delayed to each destination as a function of airline. It is evident that ALASKA has lower flight delays at every single destination. There are other factors such as cost and customer service, but this piece of information could sway a consumer into picking ALASKA over AM WEST.
+
+```{r plot1, eval=TRUE, comment=NA, message=FALSE}
+gginit.count <- ggplot(flight.status.final,aes(factor(Destination),Total_Flights,fill=Airline))
+gginit.delay <- ggplot(flight.status.final,aes(factor(Destination),Percent_Delayed,fill=Airline))
+plottype.count <- geom_bar(stat="identity")
+plottype.delay <- geom_bar(stat="identity",position="dodge")
+plottheme <- theme_bw() + theme(axis.ticks.y=element_blank(),axis.text.y = element_blank(),panel.grid.major=element_blank(),panel.grid.minor=element_blank())
+count.plot <- gginit.count + plottype.count + plottheme + xlab('Destination') + ylab('Number of Flights') + ggtitle('Total Number of Flights')
+delay.plot <- gginit.delay + plottype.delay + plottheme + xlab('Destination') + ylab('Percent Delayed') + ggtitle('Percent Delayed')
+plot_grid(count.plot,delay.plot,align="v",nrow=2, rel_heights=c(1/2,1/2))
+```
+
+Next, I wanted to display the last two data frames created in the last section in two tables. The first table analyzes the average percent delayed for flights to each destination. It shows that the flights to Phoenix are the least delayed, while flights to San Francisco are the most delayed. The second table reiterates what we saw in the 'Percent Delayed' bar graph, where flgihts from ALASKA airlines are less delayed than AM WEST.
+
+```{r tables, eval=TRUE, comment=NA}
+datatable(flight.status.location,rownames=FALSE)
+datatable(flight.status.airline,rownames=FALSE)
+```
