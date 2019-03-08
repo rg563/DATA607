@@ -1,0 +1,176 @@
+---
+title: "Project 2"
+author: "Ryan Gordon"
+date: "03/10/2019"
+output:
+  html_document:
+    code_folding: hide
+    highlight: pygments
+    theme: cerulean
+    toc: true
+    toc_float:
+      collapsed: false
+---
+
+## Load All Necessary Libraries 
+
+First, we need to load all the libraries used in this project. The following packages and the reason for them is shown below:
+
+* dplyr - tools for manipulating datasets
+* tidyr - tidy the data
+* DT - used to display the dataframes into a user-friendly table
+* corrplot - make a correlation plot
+* ggplot2 - graphing utility
+* reshape2 - for the melt function
+* stringr - manipulate strings
+
+```{r load-libraries, eval=TRUE, comment=NA, message=FALSE}
+library(dplyr)
+library(tidyr)
+library(DT)
+library(corrplot)
+library(ggplot2)
+library(reshape2)
+library(stringr)
+```
+
+## Analyzing Three Different Datasets {.tabset .tabset-fade}
+
+### Dataset #1: 2018 Zillow Rental Data by State - Provided by Sunny Mehta
+
+This dataset shows all of the 2018 Zillow rental prices per month for each state. First, I saved the data as a csv file, uploaded it into a table, and changed the column names so that it was more readable.
+
+```{r load-csv1, eval=TRUE, message=FALSE, comment=NA, warning=FALSE}
+raw.df1 <- as.data.frame(read.csv("rental.csv",header=TRUE,sep=","))
+colnames(raw.df1) <- c("State","SizeRank","aJan","bFeb","cMar","dApr","eMay","fJun","gJul","hAug","iSep","jOct","kNov","lDec")
+```
+
+Next, I decided to add five additional columns for the first, second, third and fourth quarter averages, and the state average. I then added a row that calculated the averages for all states as a whole.
+
+```{r calculations, eval=TRUE, message=FALSE, comment=NA, warning=FALSE}
+raw.df1$Q1_Average <- rowMeans(raw.df1[,c(3:5)])
+raw.df1$Q2_Average <- rowMeans(raw.df1[,c(6:8)])
+raw.df1$Q3_Average <- rowMeans(raw.df1[,c(9:11)])
+raw.df1$Q4_Average <- rowMeans(raw.df1[,c(12:14)])
+raw.df1$State_Average <- rowMeans(raw.df1[,c(3:14)])
+All_States <- c(NA)
+for (i in 3:ncol(raw.df1)) {
+  All_States[i] <- colMeans(raw.df1[,i,drop=FALSE])
+}
+new.df1 <- rbind(raw.df1,All_States)
+row.names(new.df1)[52] <- "All States"
+drop.df1 <- new.df1[,c(1,3:19)]
+```
+
+The first analysis I did was to compare the trends of rental prices for the five biggest states and the trends for the five smallest states. In order to do this, I needed to transpose the dataset so that I can plot by column. I used the gather function to get the dates in one column, and the spread the data by state. I then needed to melt the data from the reshape package to get it back into long format.
+
+```{r tidydata, eval=TRUE, comment=NA}
+tidydata <- drop.df1 %>% gather(Dates,Count,2:18) %>% spread(State,Count)
+colnames(tidydata)[53] <- "All States"
+bigstates <- tidydata[1:12,c("Dates","California","Texas","New York","Florida","Illinois","All States")]
+smallstates <- tidydata[1:12,c("Dates","Alaska","North Dakota","Vermont","District of Columbia","Wyoming","All States")]
+bigmelt <- melt(bigstates,id.vars='Dates')
+smallmelt <- melt(smallstates,id.vars='Dates')
+```
+
+From these two plots, I can see that the price per square foot does not vary much between the top 5 most populated states and the bottom 5 most populated states. I can see that the District of Columbia and New York have the highest price per square foot, which makes sense considering the crowdedness of DC and New York city. If you look that these trends, it appears that the price per square foot is higher in the middle of the year for these two areas. Therefore, I decided to break down my analysis by quarter.
+
+```{r ggplot, eval=TRUE, comment=NA}
+gginit.big <- ggplot(bigmelt,aes(x=factor(Dates),y=value,color=factor(variable),group=factor(variable)))
+gginit.small <- ggplot(smallmelt,aes(x=factor(Dates),y=value,color=factor(variable),group=factor(variable)))
+rename.axis <- c("Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec")
+gginit.big + geom_line() + theme_bw() + xlab('Month') + ylab('Price per Square Foot') + guides(color=guide_legend("States")) + labs(title="Top 5 Most Populated States") + ylim(0,5)
+gginit.small + geom_line() + theme_bw() + xlab('Month') + ylab('Price per Square Foot') + guides(color=guide_legend("States")) + labs(title="Bottom 5 Most Populated States") + ylim(0,5)
+```
+
+From this graph, we can see that Quarter 2 (April-June) have the highest price per square foot. This makes sense considering this is the most popular time for home buying (according to my realtor) because the weather is nicer and it is the end of the school year.
+
+```{r byquarter, eval=TRUE, comment=NA}
+byquarter <- tidydata[13:16,c("Dates","All States")]
+quartermelt <- melt(byquarter,id.vars='Dates')
+gginit.quarter <- ggplot(quartermelt,aes(x=factor(Dates),y=value,color=factor(variable),group=factor(variable)))
+gginit.quarter + geom_line() + theme_bw() + theme(legend.position="none") + xlab('Quarter') + ylab('Price per Square Foot')  + labs(title="Price per Square Foot Average for all States per Quarter")
+```
+
+### Dataset #2: Chemical Analysis of Wines from Three Different Cultivars in Italy - Provided by Omer Ozeren
+
+This dataset is pretty clean to begin with, but I wanted to use it to do some statistical analysis on it. First, I loaded in the data as a data frame and renamed the columns so that they are readable.
+
+```{r load-csv2, eval=TRUE, message=FALSE, comment=NA, warning=FALSE}
+raw.df2 <- as.data.frame(read.csv("wine.csv",header=FALSE,sep=","))
+colnames(raw.df2) <- c("ID","Alcohol","Malic_Acid","Ash","Alcalinity_of_Ash","Magnesisum","Total_Phenols","Flavanoids","Nonflavanoid_Phenols","Proanthocyanins","Color_Intensity","Hue","OD280/OD315_of_Diluted_Wines","Proline")
+```
+
+I decided to create a datatable by getting the average of each column based on the cultivar. I used the aggregate function to calculate this. This datatable is useful because you can pick which cultivar to purchase your wine from based on whatever factors most influence your decision. For example, if you are looking for a higher alcohol content, you may want to purchase from cultivar 1. If you want a high concentration of flavanoids because they are good for you, you may also pick cultivar 1.
+
+```{r averagetable, eval=TRUE, message=FALSE, comment=NA, warning=FALSE}
+averagepercolumn <- aggregate(raw.df2[,-1], list(raw.df2$ID), mean)
+datatable(averagepercolumn[,-1]) %>% formatRound(columns=c(1:13), digits=3)
+```
+
+Another interesting analysis to conduct on this data set would be to see if there is a correlation between any of these variables. I decided to create a correlation plot (based on a correlation matrix) to look at correlations between variables. I used the corrplot package to do this.
+
+From the plot, we can see that alcohol content shows a high, positive correlation with proline. Therefore, the greater the proline content, the more alcoholic the wine tends to be. We can also see that hue has a high, negative correlation to malic acid. Therefore, the more malic acid there is, the lesser the hue.
+
+```{r corrplot, eval=TRUE, message=FALSE, comment=NA, warning=FALSE}
+corrplot(cor(raw.df2[,-1]))
+```
+
+### Dataset #3: Super Bowl MVPs - Provided by Robert Welk
+
+I copied this file into a csv file, and I could see that this was tab separated. Therefore, in my read.csv function, I used "\\t" as my separator. This created three columns as shown below:
+
+```{r load-csv3, eval=TRUE, message=FALSE, comment=NA, warning=FALSE}
+raw.df3 <- as.data.frame(read.csv("mvp.csv",header=TRUE,sep="\t"))
+head(raw.df3)
+```
+
+The first thing I noticed is that I did not need the "No." column since these roman numerals matched the row ID.
+
+```{r drop-no, eval=TRUE, message=FALSE, comment=NA, warning=FALSE}
+drop.df3 <- raw.df3[,-1]
+```
+
+The "Player" column has a "Name", "Position", "Team" pattern. Therefore, we can split this up into three separate columns. I used the separate function to accomplish this.
+
+```{r separate, eval=TRUE, message=FALSE, comment=NA, warning=FALSE}
+sep.df3 <- drop.df3 %>% separate(PLAYER,c("Player","Position","Team"),sep=",")
+```
+
+Next, I wanted to extract all of the all of the touchdowns scored. To accomplish this, I used the mutate function to add a column, and then used the str_extract_all function to extract the number of touchdowns. This wasnt perfect and I had to manually edit Super Bowl 1, 31, 48 and 53. I also dropped the highlight table because it was not needed anymore for my analysis. Finally, I placed the final data into a datatable. From the databale, we can sort by Touchdowns and see that Steve Young had the most touchdowns in a Super Bowl in Super Bowl 29.
+
+```{r num_tds, eval=TRUE, message=FALSE, comment=NA, warning=FALSE}
+td.df3 <- sep.df3 %>% mutate(Touchdowns = str_extract_all(str_extract_all(HIGHLIGHTS,"[:digit:]?([:space:]TD)"),"[:digit:]"))
+td.df3[1,5] <- 2
+td.df3[31,5] <- 1
+td.df3[48,5] <- 1
+td.df3[52,5] <- 4
+final.df3 <- td.df3[,-c(4)]
+datatable(final.df3)
+```
+
+I used the table function in order to see the player with the most Super Bowl MVPs. From the data we can see that Tom Brady has the most MVPs with four. We can also see that Tom Brady, Joe Montana, Bart Starr, Eli Manning and Terry Bradshaw all have multiple MVPs.
+
+```{r mvp, eval=TRUE, message=FALSE, comment=NA, warning=FALSE}
+num.mvp <- data.frame(table(final.df3$Player))
+colnames(num.mvp) <- c("Player","MVPs")
+head(num.mvp[order(-num.mvp$MVPs),])
+```
+
+I used a similar function to count the number of MVPs won per position. I displayed this in a bar graph, and we can see that QBs have won significantly more MVPs than any other position. In addition, we can see that offensive positions dominate the MVP award.
+
+```{r position, eval=TRUE, message=FALSE, comment=NA, warning=FALSE}
+num.position <- data.frame(table(final.df3$Position))
+colnames(num.position) <- c("Position","Count")
+num.position$Position <- factor(num.position$Position, levels = num.position$Position[order(-num.position$Count)])
+gginit.pos <- ggplot(num.position,aes(x=Position,y=Count))
+ggtype.pos <- geom_bar(stat="identity")
+ggtheme <- theme_bw()
+gginit.pos + ggtype.pos + ggtheme
+```
+
+Finally, I used a special algorithm to find the greatest Super Bowl MVP of all-time.
+
+```{r nick, eval=TRUE, message=FALSE, comment=NA, warning=FALSE}
+final.df3[52,c(1,3)]
+```
