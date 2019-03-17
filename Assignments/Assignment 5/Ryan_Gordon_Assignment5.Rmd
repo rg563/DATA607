@@ -1,0 +1,125 @@
+---
+title: "Assignment 5 - Working with XML and JSON in R"
+author: "Ryan Gordon"
+date: "03/17/2019"
+output:
+  html_document:
+    highlight: pygments
+    theme: cerulean
+    toc: true
+    toc_float:
+      collapsed: false
+---
+
+## Loading Libraries
+
+Here are a list of the necessary packages for this assignment:
+
+* RCurl - Save the URL
+* XML - Parse HTML and XML files
+* jsonlite - Parse JSON file
+* DT - Create datatable
+
+```{r load-libraries, eval=TRUE, warning=FALSE, message=FALSE}
+library(RCurl)
+library(XML)
+library(jsonlite)
+library(DT)
+```
+
+## HTML, XML and JSON Web Scraping {.tabset .tabset-fade}
+
+Each of the tabs represents a particular file type, where the data was scraped and transformed into a data frame using R. All of the information in each of these files are the same as the other two files, but are saved in their respective file types.
+
+### HTML
+
+For the HTML file, the readHTMLTable function was used to parse the data. This reads the file in as a "list," and this list contains a dataframe, "ChemEngBooks," as shown below:
+
+```{r html-grab, eval=TRUE, warning=FALSE, comment=NA}
+books.html.url <- getURL("https://raw.githubusercontent.com/rg563/DATA607/master/Assignments/Assignment%205/books.html")
+books.html <- readHTMLTable(books.html.url,header=TRUE)
+class(books.html)
+class(books.html$ChemEngBooks)
+books.html
+```
+
+Next, we simply extract the ChemEngBooks from "books.html" since this is the data frame.
+
+```{r html-df, eval=TRUE, warning=FALSE, comment=NA}
+books.html.df <- books.html$ChemEngBooks
+books.html.df
+```
+
+Finally, we can display the data frame as a data table using the datatable function.
+
+```{r html-datatable, eval=TRUE, warning=FALSE, comment=NA}
+datatable(books.html.df)
+```
+
+### XML
+
+For the XML file, I used xmlParse to read the data into a variable. We did not see the function return a "list" this time, but we saw it return a "XMLInternalDocument." As you can see below, it appears that the entire XML file was just reprinted.
+
+```{r xml-grab, eval=TRUE, warning=FALSE, comment=NA}
+books.xml.url <- getURL("https://raw.githubusercontent.com/rg563/DATA607/master/Assignments/Assignment%205/books.xml")
+books.xml <- xmlParse(books.xml.url)
+class(books.xml)
+books.xml
+```
+
+We can use the xmlRoot function to remove the XML header and return the top-level XMLNode, which in this case is the ChemEngBooks itself.
+
+```{r xml-root, eval=TRUE, warning=FALSE, comment=NA}
+books.xml.root <- xmlRoot(books.xml)
+books.xml.root
+```
+
+We can then utilize the xmlValue function to retrieve all the important information of each node. If we use a nested xmlSApply function we can retrieve all the information from each book into a matrix. The reason we need to use a nested one is because the ChemEngBooks are the top-element, followed by each Book node, and then the values within each Book node are the important information.
+
+```{r xml-matrix, eval=TRUE, warning=FALSE, comment=NA}
+books.xml.matrix <- xmlSApply(books.xml.root, function(x) xmlSApply(x, xmlValue))
+books.xml.matrix
+```
+
+Finally, we need to transpose the matrix, and then turn it into a dataframe.
+
+```{r xml-df, eval=TRUE, warning=FALSE, comment=NA}
+books.xml.matrix.t <- t(books.xml.matrix)
+books.xml.df <- data.frame(books.xml.matrix.t, row.names = NULL)
+books.xml.df
+```
+
+The final data table from the XML file is shown below:
+
+```{r xml-datatable, eval=TRUE, warning=FALSE, comment=NA}
+datatable(books.xml.df)
+```
+
+### JSON
+
+The procedure for scraping a JSON file is almost identical to the HTML file with the exception of the fromJSON function used to read the file. Everything else about the procedures and structure of R code is the same as the HTML file.
+
+```{r json-grab, eval=TRUE, warning=FALSE, comment=NA}
+books.json.url <- getURL("https://raw.githubusercontent.com/rg563/DATA607/master/Assignments/Assignment%205/books.json")
+books.json <- fromJSON(books.json.url)
+class(books.json)
+class(books.json$ChemEngBooks)
+books.json
+```
+
+```{r json-df, eval=TRUE, warning=FALSE, comment=NA}
+books.json.df <- books.json$ChemEngBooks
+books.json.df
+```
+
+```{r json-datatable, eval=TRUE, warning=FALSE, comment=NA}
+datatable(books.json.df)
+```
+
+## Conclusions
+
+The major findings and differences between each file type are summarized below:
+
+* Despite the very different file structures, HTML and JSON files were read into R using the same R code and functions (except for fromJSON and readHTMLTable functions)
+* The process for scraping an XML file was more involved and a bit more challenging than the other file types. However, once the file structure of a XML file was understood, it was relatively straight forward.
+* After all of the scraping was complete, all of the files produced data tables that were identical.
