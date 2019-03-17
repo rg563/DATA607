@@ -1,0 +1,31 @@
+{
+    "ChemEngBooks":[
+        {
+            "Title": "Chemical Engineering Design: Principles, Practice and Economics of Plant and Process Design",
+            "Author": "Gavin Towler, Ray Sinnott",
+            "Publisher": "Elsevier",
+            "Year Published": "2013",
+            "Edition": "Second",
+            "Price": "$94.86",
+            "ISBN-13": "978-0080966595"
+        },
+        {
+            "Title": "Chemical, Biochemical, and Engineering Thermodynamics",
+            "Author": "Stanley I. Sandler",
+            "Publisher": "Wiley",
+            "Year Published": "2006",
+            "Edition": "Fourth",
+            "Price": "$114.00",
+            "ISBN-13": "978-0471661740"
+        },
+        {
+            "Title": "Applied Mathematics And Modeling For Chemical Engineers",
+            "Author": "Richard G. Rice, Duong D. Do",
+            "Publisher": "Wiley",
+            "Year Published": "2012",
+            "Edition": "Second",
+            "Price": "$66.50",
+            "ISBN-13": "978-1118024720"
+        }
+    ]
+}
