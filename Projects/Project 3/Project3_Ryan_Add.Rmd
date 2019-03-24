@@ -543,3 +543,7 @@ locations.state <- as.data.frame(table(listings.state$State))
 head(locations.city[order(locations.city$Freq,decreasing = TRUE),],10)
 head(locations.state[order(locations.state$Freq,decreasing = TRUE),],10)
 ```
+
+Unexpectedly, we see that New York City does not have the most Data related jobs, but Princeton, NJ does. In addition, San Francisco is ranked 8th on the list, where we would expect it to be higher ranked that.
+
+When we look at the results by state, we see that NJ has by far the most data related jobs, followed by California and New York. It is interesting that NJ has the most data jobs considering its small size compared to other states. However, it makes sense due to its close proximity to New York City.
