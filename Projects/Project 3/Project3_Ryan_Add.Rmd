@@ -1,0 +1,545 @@
+---
+title: "Project 3"
+author: "Mary Anna Kivenson"
+date: "3/17/2019"
+output:
+  html_document:
+    highlight: pygments
+    theme: united
+    css: styles.css
+    toc: true
+    toc_float: true
+  pdf_document: default
+  
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rvest)
+library(tidyverse)
+library(data.table)
+library(DT)
+library(magrittr)
+library(digest)
+library(RPostgreSQL)
+library(tidytext)
+library(config)
+library(tm)
+library(SnowballC)
+library(wordcloud)
+library(RColorBrewer)
+library(RCurl)
+library(XML)
+library(stringr)
+library(zoo)
+library(ggplot2)
+library(knitr)
+```
+
+##City Jobs Dataset
+
+
+We start by importing the data for NYC jobs from Github and cleaning up the column names. Then we remove duplicate listings.
+
+```{r get_first, cache=TRUE}
+raw_nyc_df <- read.csv('https://raw.githubusercontent.com/mehtablocker/cuny_607/master/project_3/nyc-jobs.csv')
+nyc_jobs_df <- raw_nyc_df
+names(nyc_jobs_df) <- names(nyc_jobs_df) %>% tolower() %>% gsub("\\.", "_", .)
+names(nyc_jobs_df)[names(nyc_jobs_df)=="x__of_positions"] <- "n_of_positions"
+nyc_jobs_df <- nyc_jobs_df %>% select(-posting_type) %>% unique()
+nyc_jobs_df %>% tail() %>% datatable()
+```
+
+<br>
+
+###Filter for data-specific jobs
+
+We filter for data science jobs by using a regular expression to search the business_title column for the case insensitive terms "data" or "analytics." Then we create another table for non-data jobs.
+
+```{r filter_first}
+data_jobs_df <- nyc_jobs_df %>% filter(grepl("data|analytics", business_title, ignore.case = T))
+other_jobs_df <- nyc_jobs_df %>% filter(!grepl("data|analytics", business_title, ignore.case = T))
+data_jobs_df %>% head() %>% datatable()
+```
+
+<br>
+
+###Analyze quantity and salary
+
+We can see from the above table that a lot of key values are missing, including Job Description and Preferred Skills. This significantly limits our analysis capabilities to only a few areas.
+
+<br>
+
+__Of all the jobs working for New York City, how many are data jobs?__
+
+```{r analyze_first_1}
+### Total number of jobs in the dataset:
+nrow(nyc_jobs_df)
+### Number of data jobs:
+nrow(data_jobs_df)
+### Data jobs, as a percentage of total:
+nrow(data_jobs_df)/nrow(nyc_jobs_df)
+```
+
+In this dataset, only about 3.2 percent of jobs are data jobs.
+
+<br>
+
+__How well do data jobs pay relative to non-data jobs?__
+
+This data set provided two salaries per job posting. The first was for the minimum, while the second was for the maximum. At first attempt to see if there was a difference between data jobs and non-data jobs, we created box plots to see the difference in distribution.
+
+```{r analyze_first_2}
+### Data jobs
+summary(data_jobs_df$salary_range_to)
+### Non-data jobs
+summary(other_jobs_df$salary_range_to)
+par(mfrow=c(1,2))
+boxplot(data_jobs_df$salary_range_to, xlab="Data Jobs", ylab="Salary in Dollars", ylim=c(0, 200000))
+boxplot(other_jobs_df$salary_range_to, xlab="Non-Data Jobs", ylab="Salary in Dollars", ylim=c(0, 200000))
+par(mfrow=c(1,1))
+```
+
+The distribution is wider for non-data jobs, but the median salary is higher for data jobs. It is important to remember that these are all government jobs, which overall may pay less than private sector jobs.
+
+After analyzing this data further, we can see that minimum salary for both data sets is less than \$20. These must be hourly rates, and this will unfairly skew the distribution. Therefore, we removed any salary that was less than \$20,000.
+
+```{r include-salary-new, eval=TRUE, comment=NA}
+salary.thresh <- 20000
+data_jobs_df_new <- subset(data_jobs_df, salary_range_to >= salary.thresh & salary_range_from >= salary.thresh)
+other_jobs_df_new <- subset(other_jobs_df, salary_range_to >= salary.thresh & salary_range_from >= salary.thresh)
+```
+
+Now that we have only included annual salaries, we can conduct a statistical analysis on this data. We can run a two-sample $t$-test to see if there is any statistical difference between the means. In particular, we wanted to see if data jobs paid better than non-data jobs. The null and alternative hypothesis can be seen below:
+
+$H_{0}: \mu_{A}=\mu_{B}$
+
+$H_{a}: \mu_{A}>\mu_{B}$
+
+where $A$ in this case represents the data group, and $B$ represents the non-data group.
+
+The t-statstic can be calculated using the Welch t-statistic method since the variances do not appear to be equal. The equation is as follows:
+
+$t = \frac{\bar{x}_{A}-\bar{x}_{B}}{\sqrt{\frac{s_{A}^{2}}{n_{A}}+\frac{s_{B}^{2}}{n_{B}}}}$
+
+The degrees of freedom, $df$, are calculated using the following equation:
+
+$df = \frac{\left(\frac{s_{A}^{2}}{n_{A}}+\frac{s_{B}^{2}}{n_{B}}\right)}{\frac{s_{A}^{4}}{n_{A}^{2}(n_{B}-1)}+\frac{s_{B}^{4}}{n_{B}^{2}(n_{A}-1)}}$
+
+Below is the $t$-test for the higher range of salries. The $t$-test shows that we failed to reject the null hypothesis at 95\% confidence level, since the $p$-value is greater than the significance level.
+
+```{r statistics, eval=TRUE, comment=NA}
+t.test(data_jobs_df_new$salary_range_to, other_jobs_df_new$salary_range_to, alternative="greater", var.equal=FALSE)
+```
+
+However, if we conduct the same $t$-test on the lower salary range, we can see that the $p$-value is less than 0.05, as shown below. Therefore, there is sufficient evidence to reject the null hypothesis in favor of the alternative, and we can say that the lower end of the starting salary for data jobs is higher than non-data jobs. The lower range may hold more water since a lot of job postings will try to attract you with the range, but lean towards the lower salary number.
+
+```{r statistics-more, eval=TRUE, comment=NA}
+t.test(data_jobs_df$salary_range_from, other_jobs_df$salary_range_from, alternative="greater", var.equal=FALSE)
+```
+
+Below, we can see the histograms for the lower and higher range salaries of both the data and non-data jobs. These graphs show that the lower salary-range for the data jobs tend to have a greater percentage of their jobs in the the 55-65K range compared to the non-data jobs. However, for the higher end of salary, the difference in distributions is harder to tell. This is consistent with our hypothesis tests.
+
+```{r hist-nyc, eval=TRUE, comment=NA}
+numbreaks <- 10
+up.lim <- 200000
+par(mfrow=c(2,2))
+hist(data_jobs_df_new$salary_range_from,breaks=numbreaks,xlim=c(0,up.lim),main="Lower Limit Data Jobs",xlab="Salary ($)")
+hist(other_jobs_df_new$salary_range_from,breaks=numbreaks,xlim=c(0,up.lim),main="Lower Limit Other Jobs",xlab="Salary ($)")
+hist(data_jobs_df_new$salary_range_to,breaks=numbreaks,xlim=c(0,up.lim),main="Upper Limit Data Jobs",xlab="Salary ($)")
+hist(other_jobs_df_new$salary_range_to,breaks=numbreaks,xlim=c(0,up.lim),main="Upper Limit Other Jobs",xlab="Salary ($)")
+```
+
+<br>
+
+## Technology Jobs Dataset
+Next we import the data for technology jobs within New York City that were posted to dice.com. We separate one of the columns and rename a few others.
+
+```{r get_sec, cache=T}
+raw_dice_df <- read.csv('https://raw.githubusercontent.com/mehtablocker/cuny_607/master/project_3/dice_com_nyc_jobs.csv', stringsAsFactors = F)
+dice_jobs_df <- as_tibble(raw_dice_df) %>% 
+  separate(employmenttype_jobstatus, into=c("employment_type", "job_status"), sep = ", ", fill="right", extra = "drop")
+dice_jobs_df <- dice_jobs_df %>% 
+  rename(advertiser_url = advertiserurl, 
+         job_description = jobdescription,
+         job_id = jobid, 
+         job_location = joblocation_address, 
+         job_title = jobtitle, 
+         post_date = postdate)
+dice_jobs_df %>% head() %>% datatable()
+```
+
+<br>
+
+###Filter for data science jobs
+
+Since this dataset is comprised of only technology jobs, finding specifically data science jobs may require a bit more nuance. For example, if we try to filter for the words "data" or "analytics" as before, we catch a lot of software developer jobs that are not exactly the same subspace as data science.
+
+```{r filter_sec_1}
+ds_dice_df <- dice_jobs_df %>% filter(grepl("data|analytics", job_title, ignore.case = T))
+ds_dice_df %>% select(job_title, company, employment_type, skills) %>% head() %>% datatable()
+```
+
+We can refine our search by excluding words like "engineer" and "architect" to get a more relevant result.
+
+```{r filter_sec_2}
+ds_dice_df <- ds_dice_df %>% 
+  filter(!grepl("architect|architecture|engineer|developer|development|administrator|administration", job_title, ignore.case = T))
+ds_dice_df %>% select(job_title, company, employment_type, skills) %>% head() %>% datatable()
+```
+
+<br>
+
+###Search for keywords
+
+We can text mine the job_description and skills columns to find specific keywords.
+
+<br>
+
+__How many job postings mention the R programming language?__
+
+```{r analyze_sec_1}
+r_dice_df <- ds_dice_df %>% 
+  filter(grepl(" R | R,", job_description, ignore.case=T) | grepl(" R | R,", skills, ignore.case=T))
+nrow(r_dice_df)
+r_dice_df %>% head() %>% datatable()
+```
+
+Of our 59 filtered job listings, six explicitly mention R.
+
+<br>
+
+__How many job postings mention Python?__
+
+```{r analyze_sec_2}
+python_dice_df <- ds_dice_df %>% 
+  filter(grepl(" python | python,", job_description, ignore.case=T) | grepl(" python | python,", skills, ignore.case=T))
+nrow(python_dice_df)
+python_dice_df %>% head() %>% datatable()
+```
+
+Of our 59 filtered job listings, eight explicitly mention Python.
+
+<br>
+
+
+## Indeed Jobs Scraping
+
+
+### Web Scraping Indeed Job Search Pages 
+To obtain the latest available information about data science job postings, 50 pages of the latest Indeed job postings are scraped using various html nodes in the rvest package. The resulting dataset contains the following fields: job title, company, location, job summary, and link. To identify the correct html nodes that return these fields, the chrome extention *SelectorGadget* was used in conjunction with *inspect element*. Regular expressions are also used for each field to remove blank spaces, new lines, and unnecessary information.
+
+```{r job-summaries, eval=TRUE, include=TRUE}
+listings <- data.frame(title=character(),
+                 company=character(), 
+                 location=character(), 
+                 summary=character(), 
+                 link=character(), 
+                 description = character(),
+                 stringsAsFactors=FALSE) 
+for (i in seq(0, 990, 10)){
+  url_ds <- paste0('https://www.indeed.com/jobs?q=data+scientist&l=all&start=',i)
+  var <- read_html(url_ds)
+  
+  #job title
+  title <-  var %>% 
+    html_nodes('#resultsCol .jobtitle') %>%
+    html_text() %>%
+    str_extract("(\\w+.+)+") 
+  
+  #company
+  company <- var %>% 
+    html_nodes('#resultsCol .company') %>%
+    html_text() %>%
+    str_extract("(\\w+).+") 
+  
+  #location
+  location <- var %>%
+    html_nodes('#resultsCol .location') %>%
+    html_text() %>%
+    str_extract("(\\w+.)+,.[A-Z]{2}")   
+  #summary
+  summary <- var %>%
+    html_nodes('#resultsCol .summary') %>%
+    html_text() %>%
+    str_extract(".+")
+  
+  #link
+  link <- var %>%
+    html_nodes('#resultsCol .jobtitle .turnstileLink, #resultsCol a.jobtitle') %>%
+    html_attr('href') 
+  link <- paste0("https://www.indeed.com",link)
+    
+  listings <- rbind(listings, as.data.frame(cbind(title,
+                                                  company,
+                                                  location,
+                                                  summary,
+                                                  link)))
+}
+```
+
+We have successfully scraped job title, company, location, job summary, and job link from 100 pages of Indeed job postings.
+
+```{r dataframe}
+datatable(listings)
+```
+
+### Creating a Unique ID for Each Job Listing
+
+We create a unique ID for each listing based on title, location, company, summary, and description. This unique ID will be used to remove duplicates (since many sponsored posts show up multiple times in Indeed's postings).
+
+```{r deduplicate}
+#create a unique id for each job posting attribute combination
+listings$uniqueid <- mapply(function(x, y, z) digest(paste0(x,y,z)), listings$title, listings$location, listings$company)
+#remove duplicate unique ids
+listings %<>%
+  distinct(uniqueid, .keep_all = TRUE)
+#remove duplicate links
+listings %<>%
+  distinct(link, .keep_all = TRUE)
+datatable(listings)
+```
+
+### Scraping Individual Listings for Full Descriptions
+The summaries provided in the main job listing pages are somewhat limited. Links to each individual job posting were also extracted in the previous step, so it is possible to iterate theough each link and scrape the full job description. To do this, duplicates are removed and rvest is used again to extract full descriptions.
+
+```{r crawl, eval=TRUE, message=FALSE, warning=FALSE, include=TRUE}
+#obtain full description for all job postings
+for (i in (1:length(listings$link))){
+  desciption <- tryCatch(
+     html_text(html_node(read_html(as.character(listings$link[i])),'.jobsearch-JobComponent-description')),
+     error=function(e){NA}
+  )
+  if (is.null(desciption)){
+    desc <- NA
+  }
+  listings$description[i] <- desciption
+}
+```
+
+```{r crawl-results}
+datatable(listings)
+```
+
+
+### Store Job Listings in AWS SQL Server 
+
+Now that full job descriptions are available, regular expressions are used for some minor cleanup. Finally, we store the information from the web scraping in an SQL server. Rather than deleting the SQL table everytime this code chunk is run, we append the new listing to the existing SQL server. This allows any additional job listings to be captured without deleting older job listings. To prevent capturing duplicates in the SQL database, we use uniqueid as the primary key and only append listings with distinct unique IDs.
+
+
+```{r hidden, echo=TRUE, message=FALSE, warning=FALSE, paged.print=TRUE}
+config <- config::get()
+drv <- dbDriver("PostgreSQL")
+con <- dbConnect(drv, user=config$user, password=config$password, dbname=config$dbname, host= config$host)
+#Query to create new SQL table using uniqueid as the primary key
+sqltable <- "CREATE TABLE listings (
+ title TEXT,
+ company TEXT,
+ location TEXT,
+ summary TEXT,
+ link TEXT,
+ description TEXT,
+ uniqueid TEXT PRIMARY KEY
+)"
+#Creates new SQL table "listings" using the query above if it does not exist yet 
+if (!dbExistsTable(con, "listings")){
+  dbExecute(con, sqltable)
+}
+#Instead of dropping the table and creating a new one, we append records. Setting uniqueID as the primary key prevents us from appending duplicate job postings to the SQL database. This requires us to append a subset of job listings that are not duplicates. To do this, we import all uniqueid values from SQL and subset listings to exclude duplicates - then import into SQL.
+dupcheck <- "SELECT uniqueid FROM listings"
+dupcheck_results <- dbGetQuery(con, dupcheck)
+dbWriteTable(con, "listings", subset(listings, !(uniqueid %in% dupcheck_results$uniqueid)), append = TRUE, row.names = FALSE)
+```
+
+### Import Job Listings from SQL Server 
+
+This step imports all the unique data science job listings that we have saved in a SQL table. 
+
+```{r query, warning=FALSE}
+drv <- dbDriver("PostgreSQL")
+con <- dbConnect(drv, user=config$user, password=config$password, dbname=config$dbname, host= config$host)
+#Query to get all job listings from SQL database.
+sql <- " 
+    SELECT uniqueid, title, company, location, summary, link, description
+    FROM listings
+"
+#Show query results
+results <- dbGetQuery(con, sql)
+dbDisconnect(con)
+datatable(results)
+```
+
+### Using Keywords to Identify Valuable Skills
+
+
+#### Word Cloud
+
+To see which keywords show up most frequenctly in job descriptions, we create a word cloud. From the word cloud, we see that some important skills for a data science are business, machine learning, teamwork, statistics, analytics, research, and modeling. Languages highlighted in the word cloud include Python, SQL, and Java. This word cloud only provides a high-level summary of skills - for a more in-depth analysis, we will search for specific keywords. Note - R is filtered out of this word cloud. 
+
+
+```{r wc-function, eval=TRUE, include=FALSE}
+#++++++++++++++++++++++++++++++++++
+# rquery.wordcloud() : Word cloud generator
+# - http://www.sthda.com
+#+++++++++++++++++++++++++++++++++++
+# x : character string (plain text, web url, txt file path)
+# type : specify whether x is a plain text, a web page url or a file path
+# lang : the language of the text
+# excludeWords : a vector of words to exclude from the text
+# textStemming : reduces words to their root form
+# colorPalette : the name of color palette taken from RColorBrewer package, 
+  # or a color name, or a color code
+# min.freq : words with frequency below min.freq will not be plotted
+# max.words : Maximum number of words to be plotted. least frequent terms dropped
+# value returned by the function : a list(tdm, freqTable)
+rquery.wordcloud <- function(x, type=c("text", "url", "file"), 
+                          lang="english", excludeWords=NULL, 
+                          textStemming=FALSE,  colorPalette="Dark2",
+                          min.freq=3, max.words=200)
+{ 
+  library("tm")
+  library("SnowballC")
+  library("wordcloud")
+  library("RColorBrewer") 
+  
+  if(type[1]=="file") text <- readLines(x)
+  else if(type[1]=="url") text <- html_to_text(x)
+  else if(type[1]=="text") text <- x
+  
+  # Load the text as a corpus
+  docs <- Corpus(VectorSource(text))
+  # Convert the text to lower case
+  docs <- tm_map(docs, content_transformer(tolower))
+  # Remove numbers
+  docs <- tm_map(docs, removeNumbers)
+  # Remove stopwords for the language 
+  docs <- tm_map(docs, removeWords, stopwords(lang))
+  # Remove punctuations
+  docs <- tm_map(docs, removePunctuation)
+  # Eliminate extra white spaces
+  docs <- tm_map(docs, stripWhitespace)
+  # Remove your own stopwords
+  if(!is.null(excludeWords)) 
+    docs <- tm_map(docs, removeWords, excludeWords) 
+  # Text stemming
+  if(textStemming) docs <- tm_map(docs, stemDocument)
+  # Create term-document matrix
+  tdm <- TermDocumentMatrix(docs)
+  m <- as.matrix(tdm)
+  v <- sort(rowSums(m),decreasing=TRUE)
+  d <- data.frame(word = names(v),freq=v)
+  # check the color palette name 
+  if(!colorPalette %in% rownames(brewer.pal.info)) colors = colorPalette
+  else colors = brewer.pal(8, colorPalette) 
+  # Plot the word cloud
+  set.seed(1234)
+  wordcloud(d$word,d$freq, min.freq=min.freq, max.words=max.words,
+            random.order=FALSE, rot.per=0.35, 
+            use.r.layout=FALSE, colors=colors)
+  
+  invisible(list(tdm=tdm, freqTable = d))
+}
+#++++++++++++++++++++++
+# Helper function
+#++++++++++++++++++++++
+# Download and parse webpage
+html_to_text<-function(url){
+  library(RCurl)
+  library(XML)
+  # download html
+  html.doc <- getURL(url)  
+  #convert to plain text
+  doc = htmlParse(html.doc, asText=TRUE)
+ # "//text()" returns all text outside of HTML tags.
+ # We also don’t want text such as style and script codes
+  text <- xpathSApply(doc, "//text()[not(ancestor::script)][not(ancestor::style)][not(ancestor::noscript)][not(ancestor::form)]", xmlValue)
+  # Format text vector into one character string
+  return(paste(text, collapse = " "))
+}
+```
+
+
+```{r wordcloud, warning=FALSE}
+res <- rquery.wordcloud(paste(results$description), type="text", 
+        lang="english", excludeWords = c("data", "experience","will","work"),
+        textStemming = FALSE,  colorPalette="Paired",
+        max.words=500)
+```
+
+#### Keyword Search for Languages
+Below we search for occurance rates of specific languages. The majority of job postings mention R, Python, or SQL. Java and Scala are less commonly listed, but also seem to be useful skills for many job listings.
+
+```{r indeed_key}
+#R
+r_listings_df <- results %>% 
+  filter(grepl(" R | R,", description, ignore.case=T) | grepl(" R | R,", summary, ignore.case=T))
+#Python
+python_listings_df <- results %>% 
+  filter(grepl(" python | python,", description, ignore.case=T) | grepl(" python | python,", summary, ignore.case=T))
+#Java
+java_listings_df <- results %>% 
+  filter(grepl(" java | java,", description, ignore.case=T) | grepl(" java | java,", summary, ignore.case=T))
+#SQL
+SQL_listings_df <- results %>% 
+  filter(grepl(" SQL | SQL,", description, ignore.case=T) | grepl(" SQL | SQL,", summary, ignore.case=T))
+#Scala
+scala_listings_df <- results %>% 
+  filter(grepl(" Scala | Scala,", description, ignore.case=T) | grepl(" Scala | Scala,", summary, ignore.case=T))
+language_pct <- tibble(
+  language = c("R", "Python", "Java", "SQL", "Scala"), 
+  mention_pct = c(round(nrow(r_listings_df)/nrow(results),digits=2), 
+                  round(nrow(python_listings_df)/nrow(results),digits=2), 
+                  round(nrow(java_listings_df)/nrow(results),digits=2), 
+                  round(nrow(SQL_listings_df)/nrow(results),digits=2), 
+                  round(nrow(scala_listings_df)/nrow(results),digits=2)))
+language_pct %>% ggplot(aes(x=language, y=mention_pct)) + 
+  geom_bar(stat="identity", position=position_dodge(), fill="steelblue") + 
+  labs(x = "Language", y = "Percent Mentioned")
+```
+
+
+#### Keyword Search for Other Tools
+We also looked into the percent of job postings that mentioned tools such as Tableau, Spark, Hadoop, and SAS. These results show the prevalence of Big Data - given how often Spark and Hadoop are mentioned. 
+
+```{r indeed_key2}
+#Tableau
+tableau_listings_df <- results %>% 
+  filter(grepl(" Tableau | Tableau,", description, ignore.case=T) | grepl(" Tableau | Tableau,", summary, ignore.case=T))
+#Spark
+spark_listings_df <- results %>% 
+  filter(grepl(" spark | spark,", description, ignore.case=T) | grepl(" spark | spark,", summary, ignore.case=T))
+#Hadoop
+hadoop_listings_df <- results %>% 
+  filter(grepl(" hadoop | hadoop,", description, ignore.case=T) | grepl(" hadoop | hadoop,", summary, ignore.case=T))
+#SAS
+SAS_listings_df <- results %>% 
+  filter(grepl(" sas | sas,", description, ignore.case=T) | grepl(" sas | sas,", summary, ignore.case=T))
+tools_pct <- tibble(
+  tool = c("Tableau", "Spark", "Hadoop", "SAS"), 
+  mention_pct = c(round(nrow(tableau_listings_df)/nrow(results),digits=2), 
+                  round(nrow(spark_listings_df)/nrow(results),digits=2), 
+                  round(nrow(hadoop_listings_df)/nrow(results),digits=2), 
+                  round(nrow(SAS_listings_df)/nrow(results),digits=2)))
+tools_pct %>% ggplot(aes(x=tool, y=mention_pct)) + 
+  geom_bar(stat="identity", position=position_dodge(), fill="maroon") + 
+  labs(x = "Tool", y = "Percent Mentioned")
+```
+
+#### Number of Jobs by Location
+
+We thought it might be interesting to see the frequency of jobs by location. We wanted to see the frequency by both city and state, so we created to new data frames to look at this:
+
+```{r list_by_location, eval = TRUE, comment=NA}
+listings.city <- listings[,1:3]
+listings.state <- listings.city %>% separate(location, c("City","State"), sep = ",")
+```
+
+Now, we can create frequency tables for both:
+
+```{r freq_tables, eval = TRUE, comment=NA}
+locations.city <- as.data.frame(table(listings.city$location))
+locations.state <- as.data.frame(table(listings.state$State))
+head(locations.city[order(locations.city$Freq,decreasing = TRUE),],10)
+head(locations.state[order(locations.state$Freq,decreasing = TRUE),],10)
+```
