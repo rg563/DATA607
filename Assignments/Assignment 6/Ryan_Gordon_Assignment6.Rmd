@@ -1,0 +1,39 @@
+---
+title: "Assignment 6 - Web APIs"
+author: "Ryan Gordon"
+date: "03/31/2019"
+output:
+  html_document:
+    code_folding: hide
+    highlight: pygments
+    theme: cerulean
+    toc: true
+    toc_float:
+      collapsed: false
+---
+
+## Load All Necessary Libraries
+
+Here are a list of the necessary packages for this assignment:
+
+* RCurl - Save the URL
+* jsonlite - Parse JSON file
+* DT - Create datatable
+
+```{r load-libraries, eval=TRUE, warning=FALSE, message=FALSE}
+library(RCurl)
+library(jsonlite)
+library(DT)
+```
+
+## Web API
+
+For this assignment, I went ahead and retrieved some information about critics and displayed as a datatable. I am getting a weird warning every time I open in a web browser or compile. I have not been able to get rid of it.
+
+```{r get-data, eval=TRUE, comment=NA, warning=FALSE, message=FALSE}
+nyt_url <- "https://api.nytimes.com/svc/movies/v2/critics/all.json"
+nyt_api <- "2clgLwkWHqtVThCH1xNtVQD906tFnVmg"
+nyt_url_comp <- paste0(nyt_url,"?api-key=",nyt_api)
+critics <- data.frame(fromJSON(nyt_url_comp),flatten=TRUE)
+datatable(critics)
+```
