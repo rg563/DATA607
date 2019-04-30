@@ -1,0 +1,77 @@
+---
+title: TidyVerse - mutate_at(), mutate_if(), mutate_all()
+author: Ryan Gordon
+date: May 5, 2019
+output:
+  html_document:
+    highlight: pygments
+    theme: cerulean
+    toc: true
+    toc_float:
+      collapsed: false
+---
+
+### Description
+
+The "mutate" function is found within the dplyr package. In this class, we have explored this function at length, but we did not go into too much depth with variants of this function: mutate_at(), mutate_if() and mutate_all(). The functionality of these variable can be seen below:
+
+(1) mutate_all() - Affects every column variable in a particular table.
+
+(2) mutate_if() - Affects onlt the columns that satisfy the if statement. For example, if it was necessary to only edit the numeric columns, the first argument in the function would be "is.numeric". This will be explored in the examples section.
+
+(3) mutate_at() - Affects only the columns that were explicitly defined in the function.
+
+### Example
+
+To show an example of how these mutate variants can be used, I decided to use a dataset provided by Kaggle that describes Chicago's Beach Water Quality (https://www.kaggle.com/chicago/chicago-beach-swim,-weather,-lab-data/downloads/chicago-beach-swim,-weather,-lab-data.zip/21#beach-water-quality-automated-sensors.csv). The only library that I needed to load was the tidyverse package, as shown below.
+
+```{r load_library, echo=TRUE, warning=FALSE, message=FALSE, comment=NA}
+library(tidyverse)
+```
+
+#### Dataset and Initial Data Handling
+
+Initially, I imported the csv file into my Github, and uploaded the csv from there. I then changed it to a tbl table, which is required by the mutate function.
+
+```{r read_in, echo=TRUE, warning=FALSE, message=FALSE, comment=NA}
+water.quality.df <- read.csv(url("https://raw.githubusercontent.com/rg563/DATA607/master/TidyVerse/beach-water-quality-automated-sensors.csv"),header=TRUE)
+water.quality.tbl <- as_tibble(water.quality.df)
+head(water.quality.tbl)
+```
+
+The next section provides examples of how to use each of the mutate functions.
+
+#### Function Examples {.tabset .tabset-fade}
+
+##### mutate_all()
+
+In this example, let's simply divide all of the columns of type double by 100, which happens to be columns 3-8. First, I created a simple function, which divides all x by 100. Next, I used the mutate_all function to call columns 3-8 from the table and called the function to manipulate these columns
+
+```{r mutate_all, echo=TRUE, warning=FALSE, message=FALSE, comment=NA}
+divide.by.100 <- function(x, na.rm=FALSE) (x/100)
+water.quality.tbl.div.100 <- mutate_all(water.quality.tbl[,3:8], divide.by.100)
+head(water.quality.tbl.div.100)
+```
+
+If we compare the values of this table to the ones in the previous section, we can see that all of these columns are divided by 100.
+
+##### mutate_if()
+
+For this example, let's perform the same manipulation as the previous section, but instead we will use the mutate_if() function. The first argument of the mutate_if() function will be the type of column we want to manipulate. In this example, we use "is.double" because we only want to manipulate these columns. The next argument is the function. This can be seen below:
+
+```{r mutate_if, echo=TRUE, warning=FALSE, message=FALSE, comment=NA}
+water.quality.tbl %>% mutate_if(is.double, divide.by.100, na.rm = TRUE)
+```
+
+As we can see from the results, the only variables that were edited were the columns that were double types.
+
+##### mutate_at()
+
+The mutate_at() function allows us to select specific columns and make manipulations. For example, say we wanted to convert the water temperature from Celsius to Farenheit. We can create a function to accomplish this (convert.to.farenheit), and then call this function in the mutate_at() function, but only have it operate on the temperature column.
+
+```{r mutate_at_functions, echo=TRUE, warning=FALSE, message=FALSE, comment=NA}
+convert.to.farenheit <- function(x, na.rm=FALSE) (x*9/5+32)
+water.quality.tbl %>% mutate_at(c("Water.Temperature"), convert.to.farenheit)
+```
+
+From the table, we can see the that the water temperature is now in degrees Farenheit.
