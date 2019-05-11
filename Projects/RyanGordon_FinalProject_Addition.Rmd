@@ -1,0 +1,112 @@
+---
+title: "Bitcoin Analysis"
+author: "Ryan Gordon"
+date: "5/11/2019"
+output:
+  html_document:
+    highlight: pygments
+    theme: united
+    toc: true
+    toc_float: true
+---
+
+```{r load_libraries, echo=FALSE, results='hide', message=FALSE}
+#data cleanup
+library(dplyr)
+library(tidyr)
+library(magrittr)
+library(stringr)
+library(lubridate)
+library(data.table)
+#API and json
+library(httr)
+library(jsonlite)
+library(config)
+#Web Scraping
+library(rvest)
+#Visualization
+library(plotly)
+library(ggplot2)
+library(DT)
+#Data
+library(bea.R)
+library(devtools)
+library(gtrendsR)
+#Text Analysis
+library(tidytext)
+library(wordcloud)
+library(RColorBrewer)
+#Forecasting
+library(quantmod)
+library(forecast)
+library(tseries)
+library(prophet)
+```
+
+Bitcoin has been a hot topic in stock trading. The potential for major returns, as well as the extreme unpredictability of the stock has caused much excitement and fear into investments. In this section, Bitcoin trade data was imported through a csv, which was provided by Yahoo Finance.
+
+```{r data_retrieval}
+bitcoin <- read.csv(url("https://raw.githubusercontent.com/rg563/DATA607/master/Projects/BTC_USD2.csv"),header=TRUE)
+bitcoin$Date <- as_date(bitcoin$Date)
+```
+
+One of the metrics that investors use to evaluate the stock market are the returns on a particular stock. The return of a stock at time $t$ can be calculated with the following equation:
+
+$\text{return}_{t,0} = \frac{\text{Stock Price}_{t}}{\text{Stock Price}_{0}}$
+
+where $0$ is the initial starting point of the stock. For example, if you wanted to know the return over the course of a week, the starting poing would be the closing price of last week's stock.
+
+However, for this analysis, we choose to measure the return of the stock everyday compared to the first time point we had. As shown in the plot, investors who purchase bitcoin in April 2014 saw an average return of 1 up until midway through 2016. The investors who held onto their stocks saw very large returns in 2018 where the ratio reached 45 before quickly shooting back down.
+
+```{r return}
+bitcoin.return <- bitcoin[,c("Date","Close")]
+bitcoin.return$Return <- bitcoin.return$Close/bitcoin.return[1,2] # calculate returns
+ggplot() + geom_line(data=bitcoin.return,aes(x=Date,y=Return)) + xlab('Time') + ylab('Return')
+```
+
+Another important metric for investors is the potential daily increase (or decrease). Most of the time, the daily change is measured by using the log difference, since this gives a percentage change in the stock. This is calculated using this simple formula:
+
+$\text{Change}_{t} = \text{log}(\text{Stock Price}_{t})-\text{log}(\text{Stock Price}_{t-1})$
+
+A for loop was used to go through all rows and calculate this, and then results were plotted as a function of time. As you can see from the graph, this data is very hard to gain anything substantial from. The graph on long term returns provides a much better platform for your return on investment. However, the log data becomes very important for modelling the behavior of the stock, so it would be useful in that situation.
+
+```{r logdiff, message=FALSE, warning=FALSE}
+logdiff <- vector() # initialize log difference
+for (i in 1:nrow(bitcoin.return)) {
+  if (i == 1) {
+    logdiff[i] <- NA
+  }
+  else {
+    logdiff[i] <- log(bitcoin.return[i,2]) - log(bitcoin.return[i-1,2])
+  }
+}
+bitcoin.return$LogDifference <- logdiff
+ggplot() + geom_line(data=bitcoin.return,aes(x=Date,y=LogDifference)) + xlab('Time') + ylab('Log Price Difference')
+```
+
+Finally, investors are extremely interested in the moving average of a stock. The reason this is an important function is because it eliminates a lot of the noise associated with the stock. The equation for moving average is shown below:
+
+$\text{Moving Average} = \frac{1}{n}\sum_{i=0}^{n-1} x_{t-i}$
+
+where $n$ is the number of days for the moving average. The number of days is dictated by the type of stock you have at hand. For stocks that are highly volatile and move fast, it is better to have a smaller $n$ to capture the behavior. However, stocks that aren't very volatile and progress over a long period of time would be better suited with a larger $n$. Most investors like to calculate the moving average for more than one value of $n$.
+
+In this analysis, the only value of $n$ selected was 20. As shown in the plot, we can see that behavior is very similar to that of the Return behavior. However, there is a lot less noise in the moving average plot. This is much easier for investors to visualize what is going on with their stocks.
+
+```{r moving_average, message=FALSE, warning=FALSE}
+n <- 20 # number of days for a moving average
+movavg <- vector() # initialize moving average vector
+for (i in 1:nrow(bitcoin.return)) {
+  if (i <= 20) {
+    movavg[i] <- NA
+  }
+  else {
+    sum <- 0
+    for (j in 1:n-1) {
+      sum <- sum + bitcoin.return[i-j,2]
+    }
+    movavg[i] <- (1/n)*sum
+  }
+}
+bitcoin.return$MovingAverage <- movavg
+ggplot() + geom_line(data=bitcoin.return,aes(x=Date,y=MovingAverage)) + xlab('Time') + ylab('Moving Average')
+```
